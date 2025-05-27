@@ -131,20 +131,23 @@ async def setlimit(interaction: discord.Interaction, limit: int):
     await interaction.response.send_message(f"Message limit has been updated to {message_limit}.")
 
 @bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
+@bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
 async def plock(interaction: discord.Interaction):
     global removed_roles
-    await interaction.response.defer()
+
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
+
+    await interaction.response.defer()  # Defer here once
 
     guild = interaction.guild
     member = guild.get_member(TARGET_USER_ID)
     channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
 
     if not member:
-        await interaction.response.send_message("Tracked user not found in this server.", ephemeral=True)
+        await interaction.followup.send("Tracked user not found in this server.", ephemeral=True)
         return
 
     removed_roles = [role for role in member.roles if role.name != "@everyone"]
@@ -152,35 +155,38 @@ async def plock(interaction: discord.Interaction):
         await member.remove_roles(*removed_roles)
         if channel:
             await channel.send(f"{member.mention} has been manually locked by a moderator.")
-        await interaction.response.send_message("User has been locked and roles removed.")
+        await interaction.followup.send("User has been locked and roles removed.")
     else:
-        await interaction.response.send_message("User has no removable roles.")
-        
+        await interaction.followup.send("User has no removable roles.")
+
 @bot.tree.command(name="punlock", description="Manually unlock the tracked user by restoring their roles (mods only)")
 async def punlock(interaction: discord.Interaction):
     global removed_roles
-    await interaction.response.defer()
+
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
+
+    await interaction.response.defer()  # Defer here once
 
     guild = interaction.guild
     member = guild.get_member(TARGET_USER_ID)
     channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
 
     if not member:
-        await interaction.response.send_message("Tracked user not found.", ephemeral=True)
+        await interaction.followup.send("Tracked user not found.", ephemeral=True)
         return
 
     if removed_roles:
         await member.add_roles(*removed_roles)
         removed_roles = []
-        await interaction.response.send_message("User has been manually unlocked.")
+        await interaction.followup.send("User has been manually unlocked.")
         if channel:
             await channel.send(f"{member.mention}'s roles have been manually restored by a moderator.")
     else:
-        await interaction.response.send_message("No roles to restore.", ephemeral=True)
+        await interaction.followup.send("No roles to restore.", ephemeral=True)
+
         
 if __name__ == "__main__":
     try:
