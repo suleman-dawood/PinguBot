@@ -43,7 +43,16 @@ removed_roles = []
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user}")
+
+    try:
+        synced = await bot.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print(f"Synced {len(synced)} slash command(s) to the guild.")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+
+    # Start the midnight reset task
     reset_roles.start()
+
 
 @bot.event
 async def on_message(message):
@@ -84,49 +93,30 @@ async def reset_roles():
     user_message_count = 0
     removed_roles = []
 
-# /status slash command
-@bot.tree.command(name="status", description="Check how many messages you've sent today.")
-async def status_command(interaction: discord.Interaction):
-    global user_message_count
 
-    if interaction.user.id == TARGET_USER_ID:
-        await interaction.response.send_message(
-            f"You've sent {user_message_count} messages today.", ephemeral=True
-        )
+@bot.tree.command(name="pstatus", description="Check how many messages you've sent today")
+async def status(interaction: discord.Interaction):
+    if interaction.user.id != TARGET_USER_ID:
+        await interaction.response.send_message("You are not being tracked.", ephemeral=True)
     else:
         await interaction.response.send_message(
-            "You are not the tracked user.", ephemeral=True
+            f"You have sent {user_message_count} messages today.", ephemeral=True
         )
 
-# /reset slash command - mod only
-@bot.tree.command(name="reset", description="Reset message count and restore roles for the user.")
-async def reset_command(interaction: discord.Interaction):
+@bot.tree.command(name="reset", description="Reset the message counter manually (mods only)")
+async def reset(interaction: discord.Interaction):
     global user_message_count, removed_roles
 
-    mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
+    # Check for the required role
+    mod_role = discord.utils.get(interaction.user.roles, id=int(os.getenv("MOD_ROLE_ID")))
     if not mod_role:
-        await interaction.response.send_message(
-            "You don’t have permission to use this command.", ephemeral=True
-        )
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
-    guild = interaction.guild
-    member = guild.get_member(TARGET_USER_ID)
-    channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+    user_message_count = 0
+    removed_roles = []
+    await interaction.response.send_message("Message count and removed roles have been reset.", ephemeral=True)
 
-    if member and removed_roles:
-        await member.add_roles(*removed_roles)
-        await interaction.response.send_message(
-            f"{member.mention}'s roles have been manually restored. Message count reset.", ephemeral=False
-        )
-        if channel:
-            await channel.send(
-                f"{member.mention}'s roles have been manually restored by a moderator."
-            )
-    else:
-        await interaction.response.send_message(
-            "No roles to restore or target user not found.", ephemeral=True
-        )
 
     user_message_count = 0
     removed_roles = []
