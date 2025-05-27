@@ -48,11 +48,6 @@ message_limit = 200  # Default message limit
 
 @bot.event
 async def on_ready():
-
-    try:
-        bot.tree.remove_command("reset", guild=discord.Object(id=GUILD_ID))
-    except Exception:
-        pass  # ignore if it doesn't exist
         
     print(f"Bot is online as {bot.user}")
     reset_roles.start()
@@ -83,7 +78,7 @@ async def on_message(message):
 @tasks.loop(time=time(hour=0, minute=0))
 async def reset_roles():
     global user_message_count, removed_roles
-
+    
     guild = discord.utils.get(bot.guilds, id=GUILD_ID)
     if not guild:
         print("Guild not found during reset_roles task.")
@@ -109,15 +104,14 @@ async def status(interaction: discord.Interaction):
 @bot.tree.command(name="preset", description="Reset the message counter manually (mods only)")
 async def reset(interaction: discord.Interaction):
     global user_message_count, removed_roles
-
+    
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
         return
 
     user_message_count = 0
-    removed_roles = []
-    await interaction.response.send_message("Message count and removed roles have been reset.")
+    await interaction.response.send_message("Message count has been reset.")
 
 @bot.tree.command(name="psetlimit", description="Set the daily message limit (mods only)")
 @app_commands.describe(limit="New message limit (must be >= 5)")
@@ -139,7 +133,7 @@ async def setlimit(interaction: discord.Interaction, limit: int):
 @bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
 async def plock(interaction: discord.Interaction):
     global removed_roles
-
+    await interaction.response.defer()
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
@@ -165,7 +159,7 @@ async def plock(interaction: discord.Interaction):
 @bot.tree.command(name="punlock", description="Manually unlock the tracked user by restoring their roles (mods only)")
 async def punlock(interaction: discord.Interaction):
     global removed_roles
-
+    await interaction.response.defer()
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
