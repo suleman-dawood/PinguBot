@@ -31,9 +31,14 @@ intents.messages = True
 
 # Custom bot class for slash command syncing
 class MyBot(commands.Bot):
+    
     async def setup_hook(self):
-        # Sync commands to the guild (server)
+        # Clear all global commands (old 'reset' etc.)
+        self.tree.clear_commands(guild=None)
+
+        # Sync only to your guild (recommended for testing)
         await self.tree.sync(guild=discord.Object(id=GUILD_ID))
+        print("Commands synced.")
 
 bot = MyBot(command_prefix="!", intents=intents)
 
