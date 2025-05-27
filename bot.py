@@ -33,6 +33,9 @@ intents.messages = True
 class MyBot(commands.Bot):
     async def setup_hook(self):
         guild = discord.Object(id=GUILD_ID)
+        # Clear existing commands
+        await self.tree.sync(guild=guild)
+        self.tree.clear_commands(guild=guild)
         self.tree.copy_global_to(guild=guild)
         await self.tree.sync(guild=guild)
 
@@ -126,6 +129,32 @@ async def setlimit(interaction: discord.Interaction, limit: int):
 
     message_limit = limit
     await interaction.response.send_message(f"Message limit has been updated to {message_limit}.")
+
+@bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
+async def plock(interaction: discord.Interaction):
+    global removed_roles
+
+    mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
+    if not mod_role:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    member = guild.get_member(TARGET_USER_ID)
+    channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+
+    if not member:
+        await interaction.response.send_message("Tracked user not found in this server.", ephemeral=True)
+        return
+
+    removed_roles = [role for role in member.roles if role.name != "@everyone"]
+    if removed_roles:
+        await member.remove_roles(*removed_roles)
+        if channel:
+            await channel.send(f"{member.mention} has been manually locked by a moderator.")
+        await interaction.response.send_message("User has been locked and roles removed.")
+    else:
+        await interaction.response.send_message("User has no removable roles.")
 
 if __name__ == "__main__":
     try:
