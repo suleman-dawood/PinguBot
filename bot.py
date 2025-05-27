@@ -48,6 +48,12 @@ message_limit = 200  # Default message limit
 
 @bot.event
 async def on_ready():
+
+    try:
+        bot.tree.remove_command("reset", guild=discord.Object(id=GUILD_ID))
+    except Exception:
+        pass  # ignore if it doesn't exist
+        
     print(f"Bot is online as {bot.user}")
     reset_roles.start()
 
@@ -155,7 +161,33 @@ async def plock(interaction: discord.Interaction):
         await interaction.response.send_message("User has been locked and roles removed.")
     else:
         await interaction.response.send_message("User has no removable roles.")
+        
+@bot.tree.command(name="punlock", description="Manually unlock the tracked user by restoring their roles (mods only)")
+async def punlock(interaction: discord.Interaction):
+    global removed_roles
 
+    mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
+    if not mod_role:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    guild = interaction.guild
+    member = guild.get_member(TARGET_USER_ID)
+    channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+
+    if not member:
+        await interaction.response.send_message("Tracked user not found.", ephemeral=True)
+        return
+
+    if removed_roles:
+        await member.add_roles(*removed_roles)
+        removed_roles = []
+        await interaction.response.send_message("User has been manually unlocked.")
+        if channel:
+            await channel.send(f"{member.mention}'s roles have been manually restored by a moderator.")
+    else:
+        await interaction.response.send_message("No roles to restore.", ephemeral=True)
+        
 if __name__ == "__main__":
     try:
         print("Starting PinguBot...")
