@@ -1,80 +1,75 @@
 import os
 import discord
 from discord.ext import commands, tasks
-from datetime import datetime, time
+from discord import app_commands
+from datetime import time
 from dotenv import load_dotenv
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Get configuration from environment variables with error handling
+# Get configuration from environment variables
 try:
     TOKEN = os.getenv("DISCORD_TOKEN")
     if not TOKEN:
         raise ValueError("DISCORD_TOKEN environment variable is not set")
-        
+    
     TARGET_USER_ID = int(os.getenv("TARGET_USER_ID"))
     GUILD_ID = int(os.getenv("GUILD_ID"))
     ANNOUNCE_CHANNEL_ID = int(os.getenv("ANNOUNCE_CHANNEL_ID"))
+    MOD_ROLE_ID = int(os.getenv("MOD_ROLE_ID"))  # Role ID for moderators
 except (ValueError, TypeError) as e:
     print(f"Error in environment variables: {e}")
-    print("Please make sure all required environment variables are set correctly in .env file")
     exit(1)
 
-# Set up bot intents (permissions)
+# Set up bot intents
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
 intents.messages = True
 
-# Initialize bot with command prefix and intents
-bot = commands.Bot(command_prefix="!", intents=intents)
+# Custom bot class for slash command syncing
+class MyBot(commands.Bot):
+    async def setup_hook(self):
+        await self.tree.sync()
 
-# Global variables to track state
+bot = MyBot(command_prefix="!", intents=intents)
+
+# Global state
 user_message_count = 0
 removed_roles = []
 
 @bot.event
 async def on_ready():
-    """Called when the bot has successfully connected to Discord"""
     print(f"Bot is online as {bot.user}")
-    # Start the daily role reset task
     reset_roles.start()
 
 @bot.event
 async def on_message(message):
-    """Handles message events to track and limit user messages"""
     global user_message_count, removed_roles
 
-    # Ignore messages from bots and users we're not tracking
     if message.author.bot or message.author.id != TARGET_USER_ID:
         return
 
     user_message_count += 1
-
     channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
 
-    # Warning at 195 messages
     if user_message_count == 195 and channel:
         await channel.send(f"{message.author.mention} has sent 195 messages today. Almost at the limit!")
 
-    # Role removal at 200 messages
     if user_message_count == 200:
         member = message.author
-        # Store all roles except @everyone
         removed_roles = [role for role in member.roles if role.name != "@everyone"]
         if removed_roles:
             await member.remove_roles(*removed_roles)
             if channel:
                 await channel.send(f"{member.mention} has hit 200 messages and had their roles removed.")
 
-    # Process any commands in the message
     await bot.process_commands(message)
 
 @tasks.loop(time=time(hour=0, minute=0))
 async def reset_roles():
-    """Daily task to reset message count and restore roles at midnight"""
     global user_message_count, removed_roles
 
     guild = discord.utils.get(bot.guilds, id=GUILD_ID)
@@ -86,11 +81,57 @@ async def reset_roles():
         if channel:
             await channel.send(f"{member.mention}'s roles have been restored at midnight.")
 
-    # Reset counters
     user_message_count = 0
     removed_roles = []
 
-# Main execution block
+# /status slash command
+@bot.tree.command(name="status", description="Check how many messages you've sent today.")
+async def status_command(interaction: discord.Interaction):
+    global user_message_count
+
+    if interaction.user.id == TARGET_USER_ID:
+        await interaction.response.send_message(
+            f"You've sent {user_message_count} messages today.", ephemeral=True
+        )
+    else:
+        await interaction.response.send_message(
+            "You are not the tracked user.", ephemeral=True
+        )
+
+# /reset slash command - mod only
+@bot.tree.command(name="reset", description="Reset message count and restore roles for the user.")
+async def reset_command(interaction: discord.Interaction):
+    global user_message_count, removed_roles
+
+    mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
+    if not mod_role:
+        await interaction.response.send_message(
+            "You don’t have permission to use this command.", ephemeral=True
+        )
+        return
+
+    guild = interaction.guild
+    member = guild.get_member(TARGET_USER_ID)
+    channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
+
+    if member and removed_roles:
+        await member.add_roles(*removed_roles)
+        await interaction.response.send_message(
+            f"{member.mention}'s roles have been manually restored. Message count reset.", ephemeral=False
+        )
+        if channel:
+            await channel.send(
+                f"{member.mention}'s roles have been manually restored by a moderator."
+            )
+    else:
+        await interaction.response.send_message(
+            "No roles to restore or target user not found.", ephemeral=True
+        )
+
+    user_message_count = 0
+    removed_roles = []
+
+# Run bot
 if __name__ == "__main__":
     try:
         print("Starting PinguBot...")
