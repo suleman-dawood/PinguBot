@@ -31,50 +31,43 @@ intents.messages = True
 
 # Custom bot class for slash command syncing
 class MyBot(commands.Bot):
-    
     async def setup_hook(self):
-        # Clear all global commands (old 'reset' etc.)
-        self.tree.clear_commands(guild=None)
-
-        # Sync only to your guild (recommended for testing)
-        await self.tree.sync(guild=discord.Object(id=GUILD_ID))
-        print("Commands synced.")
+        guild = discord.Object(id=GUILD_ID)
+        self.tree.copy_global_to(guild=guild)
+        await self.tree.sync(guild=guild)
 
 bot = MyBot(command_prefix="!", intents=intents)
 
 # Global state variables
 user_message_count = 0
 removed_roles = []
+message_limit = 200  # Default message limit
 
 @bot.event
 async def on_ready():
     print(f"Bot is online as {bot.user}")
-    # Start the midnight reset task
     reset_roles.start()
 
 @bot.event
 async def on_message(message):
     global user_message_count, removed_roles
 
-    # Ignore bot messages or messages not from the target user
     if message.author.bot or message.author.id != TARGET_USER_ID:
         return
 
     user_message_count += 1
     channel = bot.get_channel(ANNOUNCE_CHANNEL_ID)
 
-    # Send warning at 195 messages
-    if user_message_count == 195 and channel:
-        await channel.send(f"{message.author.mention} has sent 195 messages today. Almost at the limit!")
+    if user_message_count == message_limit - 5 and channel:
+        await channel.send(f"{message.author.mention} has sent {user_message_count} messages today. Almost at the limit!")
 
-    # Remove roles at 200 messages
-    if user_message_count == 200:
+    if user_message_count == message_limit:
         member = message.author
         removed_roles = [role for role in member.roles if role.name != "@everyone"]
         if removed_roles:
             await member.remove_roles(*removed_roles)
             if channel:
-                await channel.send(f"{member.mention} has hit 200 messages and had their roles removed.")
+                await channel.send(f"{member.mention} has hit {message_limit} messages and had their roles removed.")
 
     await bot.process_commands(message)
 
@@ -83,7 +76,7 @@ async def reset_roles():
     global user_message_count, removed_roles
 
     guild = discord.utils.get(bot.guilds, id=GUILD_ID)
-    if guild is None:
+    if not guild:
         print("Guild not found during reset_roles task.")
         return
 
@@ -95,22 +88,19 @@ async def reset_roles():
         if channel:
             await channel.send(f"{member.mention}'s roles have been restored at midnight.")
 
-    # Reset counts and removed roles list
     user_message_count = 0
     removed_roles = []
 
 @bot.tree.command(name="pstatus", description="Check how many messages the tracked user has sent today")
 async def status(interaction: discord.Interaction):
     await interaction.response.send_message(
-        f"<@{TARGET_USER_ID}> has sent {user_message_count} messages today.", ephemeral=True
+        f"<@{TARGET_USER_ID}> has sent {user_message_count} messages today (limit: {message_limit})."
     )
-
 
 @bot.tree.command(name="preset", description="Reset the message counter manually (mods only)")
 async def reset(interaction: discord.Interaction):
     global user_message_count, removed_roles
 
-    # Check if user has the mod role
     mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
     if not mod_role:
         await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
@@ -118,7 +108,24 @@ async def reset(interaction: discord.Interaction):
 
     user_message_count = 0
     removed_roles = []
-    await interaction.response.send_message("Message count and removed roles have been reset.", ephemeral=True)
+    await interaction.response.send_message("Message count and removed roles have been reset.")
+
+@bot.tree.command(name="psetlimit", description="Set the daily message limit (mods only)")
+@app_commands.describe(limit="New message limit (must be >= 5)")
+async def setlimit(interaction: discord.Interaction, limit: int):
+    global message_limit
+
+    if limit < 5:
+        await interaction.response.send_message("Message limit must be at least 5.", ephemeral=True)
+        return
+
+    mod_role = discord.utils.get(interaction.user.roles, id=MOD_ROLE_ID)
+    if not mod_role:
+        await interaction.response.send_message("You do not have permission to use this command.", ephemeral=True)
+        return
+
+    message_limit = limit
+    await interaction.response.send_message(f"Message limit has been updated to {message_limit}.")
 
 if __name__ == "__main__":
     try:
