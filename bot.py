@@ -131,7 +131,6 @@ async def setlimit(interaction: discord.Interaction, limit: int):
     await interaction.response.send_message(f"Message limit has been updated to {message_limit}.")
 
 @bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
-@bot.tree.command(name="plock", description="Manually lock the tracked user by removing their roles (mods only)")
 async def plock(interaction: discord.Interaction):
     global removed_roles
 
